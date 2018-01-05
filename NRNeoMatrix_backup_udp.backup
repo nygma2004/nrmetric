@@ -1,0 +1,702 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+//#include <ESP8266WebServer.h>
+//#include <ESP8266mDNS.h>
+#include <PubSubClient.h>           // MQTT support
+#include <WiFiUDP.h>
+
+#include <Adafruit_GFX.h>
+#include <Adafruit_NeoMatrix.h>
+#include <Adafruit_NeoPixel.h>
+//#include <Fonts/Picopixel.h>
+#include <Fonts/TomThumb.h>
+
+#include "JsonListener.h"
+#include "WorldClockClient.h"
+#include <ArduinoJson.h>
+#include "FS.h"
+
+String timeZoneIds [] = {"America/New_York", "Europe/London", "Europe/Paris", "Australia/Sydney"};
+WorldClockClient worldClockClient("de", "CH", "E, dd. MMMMM yyyy", 3, timeZoneIds);
+
+#include "WundergroundClient.h"
+bool changeMeteo=false;
+const String  WUNDERGRROUND_API_KEY = "c88515956a30c5e9";
+const boolean IS_METRIC = true;
+const String  WUNDERGROUND_ZMW_CODE = "00000.139.12843";
+const String WUNDERGRROUND_LANGUAGE = "FR";
+String meteoDatas [3];
+WundergroundClient wunderground(IS_METRIC);
+
+#define PINMATRIX 14
+
+#define PINBTLEFT 5
+#define PINBTCENTER 4
+#define PINBTRIGHT 15
+
+#define DEBUG  1
+
+const char* ssid = "NygmaRinglo37";
+const char* password = "Ringlo2012Oliver";
+
+
+
+extern "C" {
+#include "user_interface.h"
+}
+
+os_timer_t myTimer;
+  
+void youtube(void);
+void hours(void);
+void counter(void);
+void meteo(void);
+void rss(void);
+
+String VERSION="1.01a";
+const char* WIFISSIDValue;
+const char* WIFIpassword;
+String urlServer ;
+const char* HTTPUser;
+const char* HTTPPass ;
+const char* jsonIp;
+char ip1,ip2,ip3,ip4;
+char mask1,mask2,mask3,mask4;
+char gw1,gw2,gw3,gw4;
+
+bool connexionOK=false;
+bool configOK=false;
+
+bool cmdComplete=false;
+String SerialCMD;
+
+int retryConnexionOk,retryWifi;
+int countConnexion=0;
+bool EndCheck=false;
+bool ToReboot=false;
+char wificonfig[512];
+IPAddress ip,gateway,subnet;
+
+uint8_t MAC_array[6];
+char MAC_char[18];
+
+bool debounce;
+
+int x    = 8;
+int pass = 0;
+int i=0;
+int brightness;
+int brightnessAnalog;
+int positionEcran=0;
+int positionReel=0;
+bool ChangePosition;
+int tmpPosition;
+int nbAppli=0;
+int action=0;
+
+
+// MATRIX DECLARATION:
+// Parameter 1 = width of NeoPixel matrix
+// Parameter 2 = height of matrix
+// Parameter 3 = pin number (most are valid)
+// Parameter 4 = matrix layout flags, add together as needed:
+//   NEO_MATRIX_TOP, NEO_MATRIX_BOTTOM, NEO_MATRIX_LEFT, NEO_MATRIX_RIGHT:
+//     Position of the FIRST LED in the matrix; pick two, e.g.
+//     NEO_MATRIX_TOP + NEO_MATRIX_LEFT for the top-left corner.
+//   NEO_MATRIX_ROWS, NEO_MATRIX_COLUMNS: LEDs are arranged in horizontal
+//     rows or in vertical columns, respectively; pick one or the other.
+//   NEO_MATRIX_PROGRESSIVE, NEO_MATRIX_ZIGZAG: all rows/columns proceed
+//     in the same order, or alternate lines reverse direction; pick one.
+//   See example below for these values in action.
+// Parameter 5 = pixel type flags, add together as needed:
+//   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
+//   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
+//   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
+//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
+
+
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32,8, PINMATRIX,
+  NEO_MATRIX_BOTTOM    + NEO_MATRIX_RIGHT +
+  NEO_MATRIX_COLUMNS + NEO_MATRIX_ZIGZAG,
+  NEO_GRB            + NEO_KHZ800);
+
+uint16_t colors[] = {
+  matrix.Color(255, 0, 0), matrix.Color(0, 255, 0), matrix.Color(255, 210, 0),matrix.Color(0, 0, 255), matrix.Color(255, 0, 255), matrix.Color(0, 255, 255), matrix.Color(255, 255, 255),matrix.Color(91, 68, 43),matrix.Color(0, 0, 0)};
+
+
+static unsigned char play[]={0x00,0x00,0x10,0x18,0x1c,0x18,0x10,0x00};
+static unsigned char rond[]={0x00,0x7e,0xff,0xff,0xff,0xff,0xff,0x7e};
+static unsigned char kk[]={0x04,0x00,0x18,0x3c,0x3c,0x7e,0x7e,0x00};
+static unsigned char twitter[]={0x04,0x8f,0x6e,0x7e,0x7e,0x3c,0x38,0x30};
+static unsigned char sun[]={0x24,0x00,0xbd,0x7e,0x7e,0x7e,0x00,0x00};
+static unsigned char mask[]={0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+static unsigned char cloud[]={0x00,0x00,0x00,0x06,0x6f,0xef,0xff,0x7e};
+
+static const uint16_t PROGMEM
+    // These bitmaps were written for a backend that only supported
+    // 4 bits per color with Blue/Green/Red ordering while neomatrix
+    // uses native 565 color mapping as RGB.  
+    // I'm leaving the arrays as is because it's easier to read
+    // which color is what when separated on a 4bit boundary
+    // The demo code will modify the arrays at runtime to be compatible
+    // with the neomatrix color ordering and bit depth.
+    RGB_bmp[][64] = {
+      // 00: blue, blue/red, red, red/green, green, green/blue, blue, white
+
+    {0x0000, 0x0840, 0x0000, 0x3940, 0x3940, 0x0020, 0x0820, 0x0000, 
+    0x0840, 0x0840, 0x8b20, 0xbcc6, 0xbca5, 0x8b20, 0x0820, 0x0820, 
+    0x0000, 0x8b40, 0xe64a, 0xf6a3, 0xf6a4, 0xe62a, 0x8300, 0x0000, 
+    0x4160, 0xbce7, 0xf682, 0xff20, 0xff00, 0xf686, 0xbc84, 0x3940, 
+    0x3960, 0xbce7, 0xf662, 0xff20, 0xff00, 0xf686, 0xbc83, 0x3940, 
+    0x0020, 0x8b20, 0xe62a, 0xf663, 0xf664, 0xe60a, 0x8300, 0x0000, 
+    0x0840, 0x0840, 0x8300, 0xbcc6, 0xbca5, 0x8300, 0x0820, 0x0820, 
+    0x0000, 0x0820, 0x0000, 0x3920, 0x3920, 0x0000, 0x0820, 0x0000,},
+
+
+
+      // 01: grey to white
+      { 0x111, 0x222, 0x333, 0x555, 0x777, 0x999, 0xAAA, 0xFFF, 
+  0x222, 0x222, 0x333, 0x555, 0x777, 0x999, 0xAAA, 0xFFF, 
+  0x333, 0x333, 0x333, 0x555, 0x777, 0x999, 0xAAA, 0xFFF, 
+  0x555, 0x555, 0x555, 0x555, 0x777, 0x999, 0xAAA, 0xFFF, 
+  0x777, 0x777, 0x777, 0x777, 0x777, 0x999, 0xAAA, 0xFFF, 
+  0x999, 0x999, 0x999, 0x999, 0x999, 0x999, 0xAAA, 0xFFF, 
+  0xAAA, 0xAAA, 0xAAA, 0xAAA, 0xAAA, 0xAAA, 0xAAA, 0xFFF, 
+  0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, },
+
+      // 02: low red to high red
+      { 0x001, 0x002, 0x003, 0x005, 0x007, 0x009, 0x00A, 0x00F, 
+  0x002, 0x002, 0x003, 0x005, 0x007, 0x009, 0x00A, 0x00F, 
+  0x003, 0x003, 0x003, 0x005, 0x007, 0x009, 0x00A, 0x00F, 
+  0x005, 0x005, 0x005, 0x005, 0x007, 0x009, 0x00A, 0x00F, 
+  0x007, 0x007, 0x007, 0x007, 0x007, 0x009, 0x00A, 0x00F, 
+  0x009, 0x009, 0x009, 0x009, 0x009, 0x009, 0x00A, 0x00F, 
+  0x00A, 0x00A, 0x00A, 0x00A, 0x00A, 0x00A, 0x00A, 0x00F, 
+  0x00F, 0x00F, 0x00F, 0x00F, 0x00F, 0x00F, 0x00F, 0x00F, },
+
+      // 03: low green to high green
+      { 0x010, 0x020, 0x030, 0x050, 0x070, 0x090, 0x0A0, 0x0F0, 
+  0x020, 0x020, 0x030, 0x050, 0x070, 0x090, 0x0A0, 0x0F0, 
+  0x030, 0x030, 0x030, 0x050, 0x070, 0x090, 0x0A0, 0x0F0, 
+  0x050, 0x050, 0x050, 0x050, 0x070, 0x090, 0x0A0, 0x0F0, 
+  0x070, 0x070, 0x070, 0x070, 0x070, 0x090, 0x0A0, 0x0F0, 
+  0x090, 0x090, 0x090, 0x090, 0x090, 0x090, 0x0A0, 0x0F0, 
+  0x0A0, 0x0A0, 0x0A0, 0x0A0, 0x0A0, 0x0A0, 0x0A0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0F0, 0x0F0, 0x0F0, 0x0F0, 0x0F0, 0x0F0, },
+
+      // 04: low blue to high blue
+      { 0x100, 0x200, 0x300, 0x500, 0x700, 0x900, 0xA00, 0xF00, 
+  0x200, 0x200, 0x300, 0x500, 0x700, 0x900, 0xA00, 0xF00, 
+  0x300, 0x300, 0x300, 0x500, 0x700, 0x900, 0xA00, 0xF00, 
+  0x500, 0x500, 0x500, 0x500, 0x700, 0x900, 0xA00, 0xF00, 
+  0x700, 0x700, 0x700, 0x700, 0x700, 0x900, 0xA00, 0xF00, 
+  0x900, 0x900, 0x900, 0x900, 0x900, 0x900, 0xA00, 0xF00, 
+  0xA00, 0xA00, 0xA00, 0xA00, 0xA00, 0xA00, 0xA00, 0xF00, 
+  0xF00, 0xF00, 0xF00, 0xF00, 0xF00, 0xF00, 0xF00, 0xF00, },
+
+      // 05: 1 black, 2R, 2O, 2G, 1B with 4 blue lines rising right
+      { 0x000, 0x200, 0x000, 0x400, 0x000, 0x800, 0x000, 0xF00, 
+        0x000, 0x201, 0x002, 0x403, 0x004, 0x805, 0x006, 0xF07, 
+  0x008, 0x209, 0x00A, 0x40B, 0x00C, 0x80D, 0x00E, 0xF0F, 
+  0x000, 0x211, 0x022, 0x433, 0x044, 0x855, 0x066, 0xF77, 
+  0x088, 0x299, 0x0AA, 0x4BB, 0x0CC, 0x8DD, 0x0EE, 0xFFF, 
+  0x000, 0x210, 0x020, 0x430, 0x040, 0x850, 0x060, 0xF70, 
+  0x080, 0x290, 0x0A0, 0x4B0, 0x0C0, 0x8D0, 0x0E0, 0xFF0,
+  0x000, 0x200, 0x000, 0x500, 0x000, 0x800, 0x000, 0xF00, },
+
+      // 06: 4 lines of increasing red and then green
+      { 0x000, 0x000, 0x001, 0x001, 0x002, 0x002, 0x003, 0x003, 
+  0x004, 0x004, 0x005, 0x005, 0x006, 0x006, 0x007, 0x007, 
+  0x008, 0x008, 0x009, 0x009, 0x00A, 0x00A, 0x00B, 0x00B, 
+  0x00C, 0x00C, 0x00D, 0x00D, 0x00E, 0x00E, 0x00F, 0x00F, 
+  0x000, 0x000, 0x010, 0x010, 0x020, 0x020, 0x030, 0x030, 
+  0x040, 0x040, 0x050, 0x050, 0x060, 0x060, 0x070, 0x070, 
+  0x080, 0x080, 0x090, 0x090, 0x0A0, 0x0A0, 0x0B0, 0x0B0, 
+  0x0C0, 0x0C0, 0x0D0, 0x0D0, 0x0E0, 0x0E0, 0x0F0, 0x0F0, },
+
+      // 07: 4 lines of increasing red and then blue
+      { 0x000, 0x000, 0x001, 0x001, 0x002, 0x002, 0x003, 0x003, 
+  0x004, 0x004, 0x005, 0x005, 0x006, 0x006, 0x007, 0x007, 
+  0x008, 0x008, 0x009, 0x009, 0x00A, 0x00A, 0x00B, 0x00B, 
+  0x00C, 0x00C, 0x00D, 0x00D, 0x00E, 0x00E, 0x00F, 0x00F, 
+  0x000, 0x000, 0x100, 0x100, 0x200, 0x200, 0x300, 0x300, 
+  0x400, 0x400, 0x500, 0x500, 0x600, 0x600, 0x700, 0x700, 
+  0x800, 0x800, 0x900, 0x900, 0xA00, 0xA00, 0xB00, 0xB00, 
+  0xC00, 0xC00, 0xD00, 0xD00, 0xE00, 0xE00, 0xF00, 0xF00, },
+
+      // 08: criss cross of green and red with diagonal blue.
+      { 0xF00, 0x001, 0x003, 0x005, 0x007, 0x00A, 0x00F, 0x000, 
+  0x020, 0xF21, 0x023, 0x025, 0x027, 0x02A, 0x02F, 0x020, 
+  0x040, 0x041, 0xF43, 0x045, 0x047, 0x04A, 0x04F, 0x040, 
+  0x060, 0x061, 0x063, 0xF65, 0x067, 0x06A, 0x06F, 0x060, 
+  0x080, 0x081, 0x083, 0x085, 0xF87, 0x08A, 0x08F, 0x080, 
+  0x0A0, 0x0A1, 0x0A3, 0x0A5, 0x0A7, 0xFAA, 0x0AF, 0x0A0, 
+  0x0F0, 0x0F1, 0x0F3, 0x0F5, 0x0F7, 0x0FA, 0xFFF, 0x0F0, 
+  0x000, 0x001, 0x003, 0x005, 0x007, 0x00A, 0x00F, 0xF00, },
+
+      // 09: 2 lines of green, 2 red, 2 orange, 2 green
+      { 0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, 
+  0x0F0, 0x0F0, 0x0FF, 0x0FF, 0x00F, 0x00F, 0x0F0, 0x0F0, },
+
+      // 10: multicolor smiley face
+      { 0x000, 0x000, 0x00F, 0x00F, 0x00F, 0x00F, 0x000, 0x000, 
+  0x000, 0x00F, 0x000, 0x000, 0x000, 0x000, 0x00F, 0x000, 
+  0x00F, 0x000, 0xF00, 0x000, 0x000, 0xF00, 0x000, 0x00F, 
+  0x00F, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x00F, 
+  0x00F, 0x000, 0x0F0, 0x000, 0x000, 0x0F0, 0x000, 0x00F, 
+  0x00F, 0x000, 0x000, 0x0F4, 0x0F3, 0x000, 0x000, 0x00F, 
+  0x000, 0x00F, 0x000, 0x000, 0x000, 0x000, 0x00F, 0x000, 
+  0x000, 0x000, 0x00F, 0x00F, 0x00F, 0x00F, 0x000, 0x000, },
+};
+  
+// NEW LOGIC DEFINITIONS
+
+byte page_gfx[20]     ={0,1,2,3,4,5,6,7,8,9,10};
+byte page_color[20]   ={0,1,2,3,4,5,4,3,2,1,0};
+byte page_duration[20]={5,5,5,5,5,5,5,5,5,5,5};
+char *page_text[20]   ={"123456","234567","345678","456789","567890","abcdef","ghijkl","mnopqr","styuvw","xyzabc","defghj"};
+byte currentPage = 0;
+byte transitionStep = 0;
+bool pageChange = true;
+byte maxPage = 10;
+
+const char* mqtt_server = "192.168.1.80"; // Leave empty to disable MQTT function
+const char* mqtt_user = "mquser";
+const char* mqtt_password = "mokus4";
+const char* clientID = "NRMetric";
+const char* outTopic = "/NRMetric/status";
+const char* inTopic = "/NRMetric/update/#";
+
+WiFiClient espClient;
+PubSubClient mqtt(mqtt_server, 1883, 0, espClient);
+char msg[50];
+String mqttStat = "";
+unsigned long lastTick, uptime, lastNTP;
+
+WiFiUDP Udp;
+unsigned int localUdpPort = 4210;  // local port to listen on
+char incomingPacket[255];  // buffer for incoming packets
+char  replyPacekt[] = "Hi there! Got the message :-)";  // a reply string to send back
+
+// END NEW LOGIC
+
+int countRss=0;
+String tabRss[2];
+
+typedef void (*SimpleApplicationsList[])();
+SimpleApplicationsList Applications = { hours, meteo };
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+char serverIndex[512]="<h1>ESPMetric Config</h1><ul><li><a href='params'>Config ESPMetric</a></li><li><a href='update'>Flash ESPIOT</a></li></ul><br><br>Version: 1.01a<br><a href='https://github.com/fairecasoimeme/' target='_blank'>Documentation</a>";
+char serverIndexUpdate[256] = "<h1>ESPMetric Config</h1><h2>Update Firmware</h2><form method='POST' action='/updateFile' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
+char serverIndexConfig[1024] = "<h1>ESPMetric Config</h1><h2>Config ESPIOT</h2><form method='POST' action='/config'>SSID : <br><input type='text' name='ssid'><br>Pass : <br><input type='password' name='pass'><br>@IP : <br><input type='text' name='ip'><br>Mask : <br><input type='text' name='mask'><br>@GW : <br><input type='text' name='gw'><br>Http user : <br><input type='text' name='userhttp'><br>Http pass : <br><input type='text' name='passhttp'><br>URL : <br><input type='text' name='url'><br><input type='submit' value='OK'></form>";
+
+const char* Style = "<style>body {  text-align: center; font-family:Arial, Tahoma;  background-color:#f0f0f0;}ul li { border:1px solid gray;  height:30px;  padding:3px;  list-style: none;}ul li a { text-decoration: none;}input{ border:1px solid gray;  height:25px;}input[type=text] { width:150px;  padding:5px;  font-size:10px;}#url {  width:300px;}</style>";
+
+uint8_t sec=0;
+uint8_t minute10=0;
+bool minOccured;
+bool min10Occured;
+void timerCallback(void *pArg) {
+      sec++;
+      if (sec==60)
+      {
+        minute10++;
+        minOccured = true;
+        sec=0;
+      }
+      if (minute10==10)
+      {
+        min10Occured=true;
+        minute10=0;
+      }
+}
+
+void user_init(void) {
+
+      os_timer_setfn(&myTimer, timerCallback, NULL);
+      os_timer_arm(&myTimer, 1000, true);
+} 
+
+
+
+
+void nextAppli()
+{
+  // add one to the current pattern number, and wrap around at the end
+  nbAppli = (nbAppli + 1) % ARRAY_SIZE( Applications);
+}
+
+void prevAppli()
+{
+  // add one to the current pattern number, and wrap around at the end
+  nbAppli = (nbAppli - 1) % ARRAY_SIZE( Applications);
+}
+
+void leftButton()
+{
+  if (!debounce)
+  {
+     debounce=true;
+     action=2;
+     ChangePosition=true;
+  }
+  
+}
+
+void centerButton()
+{
+  if (!debounce)
+  {
+     debounce=true;
+     action=1;
+     changeMeteo=true;
+  }
+}
+
+void rightButton()
+{
+   if (!debounce)
+   {
+     debounce=true;
+     action=0;
+     ChangePosition=true;
+   }
+   
+}
+
+void wifiWait()
+{
+  matrix.fillScreen(0);
+  matrix.setTextColor(colors[6]);
+  matrix.setCursor(6, 0);
+  matrix.print(F("WIFI"));
+  matrix.show();
+}
+
+void reconnect() {
+  String mytopic;
+  // Loop until we're reconnected
+  while (!mqtt.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (mqtt.connect(clientID, mqtt_user, mqtt_password)) {
+      Serial.println("connected");
+      // ... and resubscribe
+      mqtt.subscribe(inTopic);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqtt.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+
+
+void setup() {
+  matrix.begin();
+  matrix.setTextWrap(false);
+  matrix.setFont(&TomThumb);
+  matrix.setBrightness(20);
+  matrix.setTextColor(colors[0]);
+  matrix.drawBitmap(0, 0,  twitter, 8,8,colors[6]);
+  matrix.show();
+
+  //pinMode(PINBTLEFT,INPUT_PULLUP);
+  //pinMode(PINBTCENTER,INPUT_PULLUP);
+  //pinMode(PINBTRIGHT,INPUT);
+  Serial.begin(115200);
+  Serial.println("");
+  Serial.print("Connecting to Wifi");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Signal [RSSI]: ");
+  Serial.println(WiFi.RSSI());
+
+  matrix.drawBitmap(0, 0,  twitter, 8,8,colors[4]);
+  matrix.show();
+
+   //retryWifi=0;  
+   //retryConnexionOk=0;
+   //countConnexion=0;
+   //EndCheck=false;
+   //ToReboot=false;
+
+  
+ //attachInterrupt(PINBTLEFT, leftButton, CHANGE); 
+ // attachInterrupt(PINBTCENTER, centerButton, CHANGE); 
+ // attachInterrupt(PINBTRIGHT, rightButton, RISING); 
+
+
+   user_init();
+
+  // Set up the MQTT server connection
+  if (mqtt_server!="") {
+    mqtt.setServer(mqtt_server, 1883);
+    mqtt.setCallback(callback);
+  }
+
+  Udp.begin(localUdpPort);
+  Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  // Convert the incoming byte array to a string
+  String mytopic = (char*)topic;
+  payload[length] = '\0'; // Null terminator used to terminate the char array
+  String message = (char*)payload;
+
+  Serial.print("Message arrived on topic: [");
+  Serial.print(topic);
+  Serial.print("], ");
+  Serial.println(message);
+
+  if(mytopic.indexOf("max")!=-1) {
+    maxPage = message.toInt();
+    Serial.print("New maxpage: ");
+    Serial.println(maxPage);
+  }
+}
+
+void loop() {
+
+// UDP !!!!!!!!!!!!!!!
+
+
+
+  int packetSize = Udp.parsePacket();
+  if (packetSize)
+  {
+    // receive incoming UDP packets
+    Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
+    int len = Udp.read(incomingPacket, 255);
+    if (len > 0)
+    {
+      incomingPacket[len] = 0;
+    }
+    Serial.printf("UDP packet contents: %s\n", incomingPacket);
+
+    // send back a reply, to the IP address and port we got the packet from
+    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+    Udp.write(replyPacekt);
+    Udp.endPacket();
+  }
+
+  
+  // Handle MQTT connection/reconnection
+  if (mqtt_server!="") {
+    if (!mqtt.connected()) {
+      reconnect();
+    }
+    mqtt.loop();
+  }
+  
+  brightnessAnalog = analogRead(0);
+  if (minOccured == true)
+  {
+    minOccured = false;
+    //ntpRequest();
+    action=0;
+    ChangePosition=true;
+  }
+  if (min10Occured == true)
+  {
+    min10Occured=false;
+    //meteoUpdate();
+  }
+
+  if (pageChange) {
+//byte currentPage = 0;
+//byte transitionStep = 0;
+//bool pageChange = true;
+    // transition in the new page
+    //Serial.print("Page ");
+    //Serial.print(currentPage);
+    //Serial.println(" >>IN");
+    for (transitionStep=0;transitionStep<=8;transitionStep++)
+    {
+      matrix.fillScreen(0);
+      //matrix.drawBitmap(0, 8-transitionStep,  twitter, 8,8,colors[0]);
+      matrix.drawRGBBitmap(0, 8-transitionStep,  RGB_bmp[page_gfx[currentPage]], 8,8);
+      matrix.setTextColor(colors[page_color[currentPage]]);
+      matrix.setCursor(9, transitionStep-8+6);
+      matrix.print(page_text[currentPage]);
+      matrix.show();
+      delay(40);
+    }   
+    // turn off the transition
+    pageChange = false;
+    // reset the counter
+    sec = 0; 
+     
+  }
+
+  if ((!pageChange)&&(sec>page_duration[currentPage])) {
+    //Serial.print("Page ");
+    //Serial.print(currentPage);
+    //Serial.println(" <<OUT");
+    // time to transition out he current screen
+    for (transitionStep=0;transitionStep<=8;transitionStep++)
+    {
+      matrix.fillScreen(0);
+      //matrix.drawBitmap(0, 0-transitionStep,  twitter, 8,8,colors[0]);
+      matrix.drawRGBBitmap(0, 0-transitionStep,  RGB_bmp[page_gfx[currentPage]], 8,8);
+      matrix.setTextColor(colors[page_color[currentPage]]);
+      matrix.setCursor(9, transitionStep+6);
+      matrix.print(page_text[currentPage]);
+      matrix.show();
+      delay(40);
+    }   
+    // go to the next page
+    if (currentPage>=maxPage) {
+      currentPage = 0;
+    } else {
+      currentPage++;
+    }
+    // Set the flag to transition in the new page
+    pageChange=true;    
+    sec = 0; 
+  }
+
+  // Uptime calculation
+  if (millis() - lastTick >= 60000) {            
+    lastTick = millis();            
+    uptime++;            
+  }    
+
+
+
+
+
+
+}
+
+/*  
+  if (!EndCheck)
+   {
+      if (WiFi.status() != WL_CONNECTED) 
+      {
+       if (DEBUG)
+        Serial.println(WiFi.status()); 
+        countConnexion=0;
+        if (retryWifi <40)
+        {
+          delay(500);
+          if (DEBUG)
+            Serial.print(".");
+          retryWifi++;
+        }else{
+          EndCheck=true;
+          setupWifiAP();
+          serverWebCfg();
+          if (DEBUG)
+            Serial.println("délai dépassé");
+        }
+      }else{
+        connexionOK=true;
+        EndCheck=true;
+        rssUpdate();
+        ntpRequest();
+        meteoUpdate();
+        if (DEBUG)
+          Serial.println("Connexion OK"); 
+      }
+   }else{
+      if (brightnessAnalog<200)
+      {
+        brightness=10;
+      }else if(brightnessAnalog<400)
+      {
+        brightness=20;
+      }else if(brightnessAnalog>400)
+      {
+        brightness=30;
+      }
+      
+      
+      //matrix.setCursor(x, 0);
+      matrix.setBrightness(brightness); 
+    
+    
+      if (ChangePosition)
+      {
+        ChangePosition=false;
+        if (action==0) //vers le haut
+        {
+           
+            uint8_t stepCount;
+             for (stepCount=0;stepCount<=8;stepCount++)
+             {
+                matrix.fillScreen(0);
+                positionReel--;
+                Applications[nbAppli]();
+                matrix.show();
+                delay(40);
+             }
+             nextAppli();
+             positionReel=8;
+             positionEcran=0;
+             debounce=false;
+               
+           
+        }else if (action==2) //vers le bas
+        {
+             uint8_t stepCount;
+             for (stepCount=0;stepCount<=8;stepCount++)
+             {
+                matrix.fillScreen(0);
+                positionReel++;
+                Applications[nbAppli]();
+                matrix.show();
+                delay(40);
+             }
+             prevAppli();
+             positionReel=-8;
+             positionEcran=0;
+             debounce=false;
+        }
+        
+      }
+      
+      tmpPosition=positionReel - positionEcran;
+      if (tmpPosition<0)
+      {
+        positionReel++;
+        
+      }else if (tmpPosition>0){
+         positionReel--;
+      }
+    
+      matrix.fillScreen(0);
+      
+      Applications[nbAppli]();
+
+      matrix.show();
+      delay(40);
+   }igen 
+   */
+
+
+
+
+
+
+
