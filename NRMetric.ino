@@ -28,7 +28,7 @@ extern "C" {
 // Also check NTP.h for some parameters as well
 const char* ssid = "xxx";
 const char* password = "xxx";
-const char* mqtt_server = "192.168.1.xx"; 
+const char* mqtt_server = "192.168.1.xxx"; 
 const char* mqtt_user = "xxx";
 const char* mqtt_password = "xxx";
 const char* clientID = "nrmetric";
@@ -237,7 +237,13 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(F("."));
+    seconds++;
+    if (seconds>180) {
+      // reboot the ESP if cannot connect to wifi
+      ESP.restart();
+    }
   }
+  seconds = 0;
   Serial.println("");
   Serial.print(F("Connected to "));
   Serial.println(ssid);
@@ -324,6 +330,7 @@ void handleDisplay() {
         matrix.setCursor(1, transitionStep-8);
         matrix.print(NTPtime);
         matrix.show();
+        yield();
         delay(40);
       }  
       pageChange = false;   
@@ -353,6 +360,7 @@ void handleDisplay() {
             matrix.setCursor(1, transitionStep);
             matrix.print(NTPtime);
             matrix.show();
+            yield();
             delay(40);
           }   
           currentPage = 0;
@@ -378,6 +386,7 @@ void handleDisplay() {
       matrix.setCursor(9, transitionStep-8+6);
       matrix.print(page_text[currentPage]);
       matrix.show();
+      yield();
       delay(40);
     }   
     // turn off the transition
@@ -403,6 +412,7 @@ void handleDisplay() {
       matrix.setCursor(9, transitionStep+6);
       matrix.print(page_text[currentPage]);
       matrix.show();
+      yield();
       delay(40);
     }   
     // go to the next page
